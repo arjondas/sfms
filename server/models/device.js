@@ -1,4 +1,5 @@
 var mongoose = require('mongoose');
+var _ = require('lodash');
 
 var DeviceSchema = new mongoose.Schema({
 	serial: {
@@ -33,6 +34,16 @@ var DeviceSchema = new mongoose.Schema({
 				default: 5
 			}
 		}
+	},
+	logs: {
+		tempData: [{
+			time: {
+				type: Number
+			},
+			data: {
+				type: Number
+			}
+		}]
 	},
 	sensors: [{
 		name: {
@@ -128,6 +139,22 @@ DeviceSchema.statics.updateSettings = function(settings, deviceID) {
 		return Promise.reject(400);
 	}
 }
+
+DeviceSchema.statics.logTemperatureData = function(tempData) {
+	var time = tempData.time;
+	var data = tempData.data;
+	return Device.findOne({
+		serial: tempData.serial
+	}).then((device) => {
+		device.logs.tempData.push({time, data});
+		return device.save().then(() => {
+			return Promise.resolve('s200');
+		})
+	}).catch(() => {
+		return Promise.reject('s400');
+	});
+}
+
 
 var Device = mongoose.model('Device', DeviceSchema);
 

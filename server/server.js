@@ -1,16 +1,85 @@
 require('./config/config');
 const {ObjectID} = require('mongodb');
-var express = require('express');
+const express = require('express');
+const http = require('http');
+const socketIO = require('socket.io');
 var bodyParser = require('body-parser');
+const {Users} = require('./utils/users');
 const _ = require('lodash');
 var {mongoose} = require('./db/mongoose');
 var {Device} = require('./models/device');
 var {User} = require('./models/user');
 var {authenticate, superAuthenticate} = require('./middleware/authenticate');
-
+var users = new Users();
 var app = express();
+var server = http.Server(app);
+var io = socketIO(server);
 const port = process.env.PORT || 4000;
 app.use(bodyParser.json());
+
+io.on('connection', (socket) => {
+	console.log('connected to client');
+	// socket.on('logTemp', (tempData, callback) => {
+	// 	Device.logTemperatureData(tempData).then((msg) => {
+	// 		console.log(msg);
+	// 		callback(msg);
+	// 	}).catch((err) => {
+	// 		console.log(err);
+	// 		callback(err);
+	// 	});
+	// });
+
+	socket.on('join', (room, callback) => {
+		socket.join(room);
+		callback(`joined service__${room}`);
+
+		socket.on('logTemp', (tempData, callback) => {
+			Device.logTemperatureData(tempData).then((msg) => {
+				console.log(msg);
+				callback(msg);
+			}).catch((err) => {
+				console.log(err);
+				callback(err);
+			});
+		});
+
+		// setInterval(() => {
+		// 	io.to(room).emit('tempControl', false, () => {
+		// 		console.log('called from client');
+		// 	});
+		// }, 10000);
+		
+		setInterval(() => {
+			io.to('1').emit('tempControl', false);
+		}, 10000);
+		
+	});
+
+	// socket.on('logs', (data, callback) => {
+	// 	callback(`logged ${data}`);
+	// 	console.log('Logging client data', data);
+	// });
+
+	// socket.on('status', (data) => {
+	// 	io.emit('tempControl', data, () => {
+	// 		console.log('tempControl status');
+	// 	});
+	// });
+
+	
+
+	socket.on('disconnect', () => {
+		console.log('Disconnected from client');
+	});
+});
+
+app.post('/log', (req, res) => {
+	Device.logTemperatureData(req.body).then(() => {
+		res.status(200).send();
+	}).catch(() => {
+		res.status(400).send();
+	});
+});
 
 /// Add Device to Master Device List, i/p: n/a, payload: {serial: '1234567'}	(Done)	√
 
@@ -124,7 +193,6 @@ app.patch('/device/pref/:id', authenticate, (req, res) => {
 	});
 });
 
-
 /// Create New User Account, i/p: n/a, payload: {email: 'example@email.com', password: '123456'} (Done)	√
 
 app.post('/user/new', (req, res) => {
@@ -176,7 +244,7 @@ app.delete('/user/logout/all', authenticate, (req, res) => {
 	});
 });
 
-app.listen(port, () => {
+server.listen(port, () => {
 	console.log(`Listening on port ${port}`);
 });
 
