@@ -9,6 +9,7 @@
   "author": "Arjon Das",
   "license": "ISC",
   "dependencies": {
+    "apn": "^2.2.0",
     "bcrypt": "^3.0.1",
     "body-parser": "^1.18.3",
     "express": "^4.16.3",

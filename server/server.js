@@ -4,38 +4,90 @@ const express = require('express');
 const http = require('http');
 const socketIO = require('socket.io');
 var bodyParser = require('body-parser');
-const {Users} = require('./utils/users');
 const _ = require('lodash');
 var {mongoose} = require('./db/mongoose');
 var {Device} = require('./models/device');
 var {User} = require('./models/user');
 var {authenticate, superAuthenticate} = require('./middleware/authenticate');
-var users = new Users();
 var app = express();
 var server = http.Server(app);
 var io = socketIO(server);
 const port = process.env.PORT || 4000;
 app.use(bodyParser.json());
 
+//// Device pings every 5 seconds
+//// redFlag is number of value warning
+const minTimeIntervalBetweenNotifications = 30				/// in seconds
 io.on('connection', (socket) => {
 	console.log('connected to client');
-	// socket.on('logTemp', (tempData, callback) => {
-	// 	Device.logTemperatureData(tempData).then((msg) => {
-	// 		console.log(msg);
-	// 		callback(msg);
-	// 	}).catch((err) => {
-	// 		console.log(err);
-	// 		callback(err);
-	// 	});
-	// });
 
 	socket.on('join', (room, callback) => {
 		socket.join(room);
+		console.log('socket joined',room);
 		callback(`joined service__${room}`);
-
+		var redFlag = 0;
+		var redInvFlag = 0;
+		var lastTriggerTime = 0;
+		var lastInvTriggerTime = 0;
 		socket.on('logTemp', (tempData, callback) => {
+			console.log(tempData.data)
+			Device.logCurrentTemp(tempData).then((device) => {
+				// console.log(device);
+			}).catch(err => {
+				console.log(err);
+			})
+			Device.surveyTemperatureData(tempData).then((flag) => {
+				if(flag) {
+					redFlag++;
+				} else {
+					redFlag = 0;
+					Device.getDeviceID(tempData).then((device) => {
+						User.logWarning(device._id, false, "temperature")
+					}).catch((err) => {
+						console.log(err);
+						console.log("deviceID query failed");
+					});
+				}
+			}).then(() => {
+				const currentTime = Date.now()
+				if(redFlag > 4) {							//// Reads atleast 5 warnings before triggering notification
+					if(currentTime - lastTriggerTime > (minTimeIntervalBetweenNotifications * 1000)) {
+						console.log("****warning temp above limit");
+						Device.getDeviceID(tempData).then((device) => {
+							User.logWarning(device._id, true, "temperature")
+						}).catch((err) => {
+							console.log(err);
+							console.log("deviceID query failed");
+						});
+						lastTriggerTime = currentTime;
+					} else {
+						console.log("*****not now");
+					}
+					// const currentTime = new Date.now()
+					// if(currentTime - lastTriggerTime > minTimeIntervalBetweenNotifications) {
+						
+					// 	lastTriggerTime = currentTime;
+					// } else {
+					// 	console.log("****not now");
+					// } 
+					
+				}
+			}).catch((flag) => {
+				if(flag) {
+					redFlag = 0;
+					Device.getDeviceID(tempData).then((device) => {
+						User.logWarning(device._id, false, "temperature")
+					}).catch((err) => {
+						console.log(err);
+						console.log("deviceID query failed");
+					});
+					console.log("****cool");
+				} else {
+					console.log("****not so cool");
+				}
+			});
 			Device.logTemperatureData(tempData).then((msg) => {
-				console.log(msg);
+				console.log(msg, tempData.data);
 				callback(msg);
 			}).catch((err) => {
 				console.log(err);
@@ -43,30 +95,88 @@ io.on('connection', (socket) => {
 			});
 		});
 
-		// setInterval(() => {
-		// 	io.to(room).emit('tempControl', false, () => {
-		// 		console.log('called from client');
-		// 	});
-		// }, 10000);
-		
-		setInterval(() => {
-			io.to('1').emit('tempControl', false);
-		}, 10000);
+		socket.on('warnInventry', (invData) => {
+			console.log(invData.data)
+			Device.logCurrentWeight(invData).then((device) => {
+
+			}).catch(err => {
+				console.log(err);
+			})
+			Device.surveyInventryData(invData).then((flag) => {
+				if(flag) {
+					redInvFlag++;
+				} else {
+					redInvFlag = 0;
+					Device.getDeviceID(invData).then((device) => {
+						User.logWarning(device._id, false, "weight")
+					}).catch((err) => {
+						console.log(err);
+						console.log("deviceID query failed");
+					});
+				}
+			}).then(() => {
+				const currentTime = Date.now()
+				if(redInvFlag > 4) {
+					if(currentTime - lastInvTriggerTime > (minTimeIntervalBetweenNotifications * 1000)) {
+						console.log("****warning inventry below limit");
+						Device.getDeviceID(invData).then((device) => {
+							User.logWarning(device._id, true, "weight")
+						}).catch((err) => {
+							console.log(err);
+							console.log("deviceID query failed");
+						});
+						lastInvTriggerTime = currentTime;
+					} else {
+						console.log("*****not now");
+					}
+					
+				}
+			}).catch((flag) => {
+				if(flag) {
+					redInvFlag = 0;
+					Device.getDeviceID(invData).then((device) => {
+						User.logWarning(device._id, false, "weight")
+					}).catch((err) => {
+						console.log(err);
+						console.log("deviceID query failed");
+					});
+					console.log("****ok inv");
+				} else {
+					console.log("****not ok inv");
+				}
+			});
+		});
+
+		socket.to(room).on('imageFetch', (data) => {
+			socket.to(room).emit('deviceImageFetch');
+		});
+
+		socket.to(room).on('serverMonitorImage', (data) => {
+			console.log('******emitting fetched data');
+			socket.to(room).emit('clientImageFetch', data);
+		});
+
+		socket.to(room).on('temp_control_monitor', (data, deviceID) => {
+			Device.updateSettings(data, deviceID)
+			socket.to(room).broadcast.emit('temp_control_monitor', data);
+		});
+
+		socket.to(room).on('temp_control_threshold', (data, deviceID) => {
+			Device.updateSettings(data, deviceID)
+			socket.to(room).broadcast.emit('temp_control_threshold', data);
+		});
+
+		socket.to(room).on('inventry_control_monitor', (data, deviceID) => {
+			Device.updateSettings(data, deviceID)
+			socket.to(room).broadcast.emit('inventry_control_monitor', data);
+		});
+
+		socket.to(room).on('inventry_control_threshold', (data, deviceID) => {
+			Device.updateSettings(data, deviceID)
+			socket.to(room).broadcast.emit('inventry_control_threshold', data);
+		});
 		
 	});
-
-	// socket.on('logs', (data, callback) => {
-	// 	callback(`logged ${data}`);
-	// 	console.log('Logging client data', data);
-	// });
-
-	// socket.on('status', (data) => {
-	// 	io.emit('tempControl', data, () => {
-	// 		console.log('tempControl status');
-	// 	});
-	// });
-
-	
 
 	socket.on('disconnect', () => {
 		console.log('Disconnected from client');
@@ -99,14 +209,14 @@ app.post('/master', superAuthenticate, (req, res) => {
 /// Add Device to User Device List, i/p: n/a, payload: {serial: '1234567'}	(Done)	√
 
 app.post('/device', authenticate, (req, res) => {
-	var body = _.pick(req.body, ['serial']);
+	var body = _.pick(req.body, ['name','serial']);
 	Device.findOne({
 		serial: body.serial
 	}).then((device) => {
 		return User.verifyDevice(req.user._id, device._id).then(() => {
 			return Promise.resolve();
 		}).catch(() => {
-			return req.user.addDevice(device._id).then((devices) => {
+			return req.user.addDevice(device._id, body.name).then((devices) => {
 				return Promise.resolve(devices);
 			}).catch(() => {
 				return Promise.reject();
@@ -178,6 +288,17 @@ app.delete('/device/:id', authenticate, (req, res) => {
 	});
 });
 
+app.get('/notification/:type/:id', authenticate, (req, res) => {
+	var entryID = req.params.id;
+	var type = req.params.type
+	if(!ObjectID.isValid(entryID)) return res.status(404).send();
+	User.resetAlert(entryID, type).then(() => {
+		res.status(200).send('removed alert');
+	}).catch(err => {
+		res.status(400).send(err);
+	});
+});
+
 /// Update Device Settings, (Done) √
 
 app.patch('/device/pref/:id', authenticate, (req, res) => {
@@ -239,6 +360,17 @@ app.delete('/user/logout', authenticate, (req, res) => {
 app.delete('/user/logout/all', authenticate, (req, res) => {
 	req.user.removeAllToken(req.token).then(() => {
 		res.status(200).send();
+	}).catch((err) => {
+		res.status(400).send(err);
+	});
+});
+
+app.get('/device/self/:serial', (req, res) => {
+	var data = {
+		serial : req.params.serial
+	}
+	Device.getDeviceID(data).then((device) => {
+		res.send(device.config);
 	}).catch((err) => {
 		res.status(400).send(err);
 	});

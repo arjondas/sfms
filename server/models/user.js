@@ -25,10 +25,32 @@ var UserSchema = new mongoose.Schema({
 		minlength: 6
 	},
 	devices: [{
+		_name: {
+			type: String,
+			trim: true
+		},
 		_deviceID: {
 			type: mongoose.Schema.Types.ObjectId				/// ******* Try string
+		},
+		warnTemp: {
+			type: Boolean,
+			default: false
+		},
+		warnWeight: {
+			type: Boolean,
+			default: false
 		}
 	}],
+	// warnings: {
+	// 	temperature: {
+	// 		type: Boolean,
+	// 		default: false
+	// 	},
+	// 	weight: {
+	// 		type: Boolean,
+	// 		default: false
+	// 	}
+	// },
 	tokens: [{
 		access: {
 			type: String,
@@ -88,9 +110,9 @@ UserSchema.methods.removeAllToken = function(token) {
 	});
 };
 
-UserSchema.methods.addDevice = function(deviceID) {
+UserSchema.methods.addDevice = function(deviceID, name) {
 	var user = this;
-	user.devices.push({_deviceID: deviceID});
+	user.devices.push({_name: name, _deviceID: deviceID});
 
 	return user.save().then(() => {
 		return user.devices;
@@ -107,6 +129,31 @@ UserSchema.methods.removeDevice = function(deviceID) {
 		}
 	});
 };
+
+UserSchema.statics.resetAlert = function(entryID, type) {
+	var User = this;
+	if(type === "temperature") {
+		return User.update({
+			// '_id': mongoose.Types.ObjectId(userID),
+			'devices._id': mongoose.Types.ObjectId(entryID)
+		}, {
+			$set: {
+				'devices.$.warnTemp': false
+			}
+		});
+	} else if(type === "weight") {
+		return User.update({
+			// '_id': mongoose.Types.ObjectId(userID),
+			'devices._id': mongoose.Types.ObjectId(entryID)
+		}, {
+			$set: {
+				'devices.$.warnWeight': false
+			}
+		});
+	} else {
+		return Promise.reject('invalid parameter')
+	}
+}
 
 UserSchema.statics.verifyDevice = function(userID, deviceID) {
 	var User = this;
@@ -155,6 +202,64 @@ UserSchema.statics.findByCredentials = function(email, password) {
 		});
 	});
 }
+
+UserSchema.statics.logWarning = function(deviceID, value, type) {
+	var User = this;
+	console.log(deviceID);
+	var bulk = User.collection.initializeOrderedBulkOp();
+	if (type === "temperature") {
+		bulk.find({
+			'devices._deviceID': mongoose.Types.ObjectId(deviceID)
+		}).update({$set: {
+				'devices.$.warnTemp': value
+			}
+		},false, true);
+		bulk.execute();
+	} else if (type === "weight") {
+		bulk.find({
+			'devices._deviceID': mongoose.Types.ObjectId(deviceID)
+		}).update({
+			$set: {
+				'devices.$.warnWeight': value
+			}
+		});
+		bulk.execute();
+	} else {
+		console.log('wrong parameter')
+	}
+
+	// var bulk = User.collection.initializeOrderedBulkOp();
+	// bulk.find({
+	// 	'devices._deviceID': deviceID
+	// }).update({
+	// 	$set: {
+	// 		'warnings.temperature' : true
+	// 	}
+	// });
+	
+	// bulk.execute();
+
+	// return User.findAndUpdate({
+	// 	'devices._deviceID': deviceID
+	// }, {$set: {
+	// 	'warnings.temperature': true
+	// }});
+
+	// return User.find({
+	// 	'devices._deviceID': deviceID
+	// }).then((users) => {
+	// 	console.log('users length :', users.length)
+	// 	users.forEach(user => {
+			
+	// 		// return user.update({
+	// 		// 	$set: {
+	// 		// 		'warnings.temperature': true
+	// 		// 	}
+	// 		// });
+	// 	});
+	// })
+}
+
 
 UserSchema.pre('save', function(next) {
 	var user = this;

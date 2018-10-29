@@ -21,7 +21,7 @@ var DeviceSchema = new mongoose.Schema({
 			},
 			threshold: {
 				type: Number,
-				default: 5
+				default: 100
 			}
 		},
 		temperature: {
@@ -31,9 +31,17 @@ var DeviceSchema = new mongoose.Schema({
 			},
 			threshold: {
 				type: Number,
-				default: 5
+				default: 4
 			}
 		}
+	},
+	currentTemp: {
+		type: Number,
+		default: 0
+	},
+	currentWeight: {
+		type: Number,
+		default: 0
 	},
 	logs: {
 		tempData: [{
@@ -44,23 +52,7 @@ var DeviceSchema = new mongoose.Schema({
 				type: Number
 			}
 		}]
-	},
-	sensors: [{
-		name: {
-			type: String,
-			default: null
-		},
-		rawdata: [{
-			time: {
-				type: Number,
-				default: null
-			},
-			data: {
-				type: Number,
-				default: null
-			}
-		}]
-	}]
+	}
 })
 
 DeviceSchema.statics.updateSettings = function(settings, deviceID) {
@@ -141,6 +133,7 @@ DeviceSchema.statics.updateSettings = function(settings, deviceID) {
 }
 
 DeviceSchema.statics.logTemperatureData = function(tempData) {
+	var Device = this;
 	var time = tempData.time;
 	var data = tempData.data;
 	return Device.findOne({
@@ -155,6 +148,84 @@ DeviceSchema.statics.logTemperatureData = function(tempData) {
 	});
 }
 
+DeviceSchema.statics.logCurrentTemp = function(tempData) {
+	var Device = this;
+	var data = tempData.data;
+	return Device.findOneAndUpdate({
+		serial: tempData.serial
+	}, {
+		$set: {
+			currentTemp: data
+	}}, {new: true})
+}
+
+DeviceSchema.statics.logCurrentWeight = function(weightData) {
+	var Device = this;
+	var data = weightData.data;
+	return Device.findOneAndUpdate({
+		serial: weightData.serial
+	}, {
+		$set: {
+			currentWeight: Math.abs(data)
+	}}, {new: true})
+}
+
+DeviceSchema.statics.surveyTemperatureData = function(tempData) {
+	var Device = this;
+	var data = tempData.data;
+	return Device.findOne({
+		serial: tempData.serial
+	}).then((device) => {
+		if(device.config.temperature.monitoring) {
+			if(device.config.temperature.threshold < data) {
+				console.log('resolving');
+				return Promise.resolve(true);
+			} else {
+				return Promise.reject(true);
+			}
+		} else {
+			return Promise.resolve(false);
+		}
+	}).catch((flag) => {
+		if (typeof(flag) === "boolean") {
+			return Promise.reject(true);
+		} else {
+			return Promise.reject(false);
+		}
+	});
+}
+
+DeviceSchema.statics.surveyInventryData = function(invData) {
+	var Device = this;
+	var data = invData.data;
+	return Device.findOne({
+		serial: invData.serial
+	}).then((device) => {
+		if(device.config.weight.monitoring) {
+			if(data < device.config.weight.threshold) {
+				console.log('resolving inventry');
+				return Promise.resolve(true);
+			} else {
+				return Promise.reject(true);
+			}
+		} else {
+			return Promise.resolve(false);
+		}
+	}).catch((flag) => {
+		if (typeof(flag) === "boolean") {
+			return Promise.reject(true);
+		} else {
+			return Promise.reject(false);
+		}
+	});
+}
+
+DeviceSchema.statics.getDeviceID = function(tempData) {
+	var Device = this;
+	return Device.findOne({
+		serial: tempData.serial
+	});
+}
 
 var Device = mongoose.model('Device', DeviceSchema);
 
