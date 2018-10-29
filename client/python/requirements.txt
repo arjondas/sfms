@@ -1,7 +1,10 @@
 certifi==2018.8.24
 chardet==3.0.4
 idna==2.7
+numpy==1.15.3
+pigpio==1.40.post1
 requests==2.19.1
+RPi.GPIO==0.6.4
 six==1.11.0
 socketIO-client-nexus==0.7.6
 urllib3==1.23

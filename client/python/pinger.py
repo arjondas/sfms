@@ -15,7 +15,9 @@ sensor = DHT22.sensor(pi, 17)
 
 hx = HX711(9,11)
 hx.set_reading_format("LSB", "MSB")
-hx.set_reference_unit(321)
+hx.set_reference_unit(322)
+#1 wire 322
+#2 wire 311.7
 
 hx.reset()
 hx.tare()
@@ -55,7 +57,7 @@ def cleanAndExit():
 	sys.exit()
 
 serial = '1'
-baseURL = 'http://192.168.2.6'
+baseURL = 'http://192.168.43.11'
 port = 4000
 url = baseURL + ':' + str(port) + '/device/self/' + serial
 config = requests.get(url)
@@ -104,7 +106,7 @@ def thread_InventryEmit():
 		socketIO.emit('warnInventry', {
 			'serial': serial,
 			'time': time.time(),
-			'data': hx.get_weight(5)
+			'data': int(round(hx.get_weight(5)))
 		})
 		hx.power_down()
 		hx.power_up()
