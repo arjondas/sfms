@@ -7,5 +7,5 @@ requests==2.19.1
 RPi.GPIO==0.6.4
 six==1.11.0
 socketIO-client-nexus==0.7.6
-urllib3==1.23
+urllib3==1.26.5
 websocket-client==0.53.0
